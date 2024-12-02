@@ -22,7 +22,7 @@ int parse_datetime(const char *str_date, const char *str_time, struct tm *tm_res
 // Returns the slope coefficient of the barometric pressure.
 double coeff_slope_press(FILE *pf, const struct tm *tm_begin, const struct tm *tm_end)
 {
-  const int LINE_MAX = 100; // the max line length in the dat files 
+  const int LINE_MAX = 150; // the max line length in the dat files 
   char buff[LINE_MAX]; // buffer for storage of the read line
   double k_slope; // the slope coefficient
 
@@ -30,6 +30,7 @@ double coeff_slope_press(FILE *pf, const struct tm *tm_begin, const struct tm *t
   //const time_t time_end = mktime((struct tm *)tm_end);
 
   int i = 0;
+  (void)fgets(buff, LINE_MAX, pf); // skip the header
   while ( fgets(buff, LINE_MAX, pf) != NULL ) {
     printf("%s", buff);
     if (i++ > 5) break;
@@ -79,7 +80,6 @@ int main(int argc, char *argv[])
 	    argv[2], argv[3]);
     exit(2);
   }
-  print_tm(&tm_begin, "The begin of the date & time range");
   
   if ( parse_datetime(argv[4], argv[5], &tm_end) != 0 ) {
     fprintf(stderr, 
@@ -87,7 +87,8 @@ int main(int argc, char *argv[])
 	    argv[4], argv[5]);
     exit(2);
   }
-  print_tm(&tm_end, "The end of the date & time range");
+  //print_tm(&tm_begin, "The begin of the date & time range");
+  //print_tm(&tm_end, "The end of the date & time range");
   
   // Calc the Slope coefficient
   double k_press = coeff_slope_press(pfile, &tm_begin, &tm_end);
