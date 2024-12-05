@@ -179,11 +179,26 @@ int fetch_data(FILE *pf, const struct tm *tm_begin, const struct tm *tm_end, BPT
   return FALSE;
 }
 
+// Calc the sum
+double sum();
+
 // Calc the Slope coefficient of the barometric pressure.
-double coeff_slope_press(const BPT_array *bpt)
+double coeff_slope_press(const BPT_array *p_arrbpt)
 {
-  double k_slope; // the slope coefficient
-  return k_slope;
+  double t, p; // time and pressure
+  double sum_x = 0, sum_y = 0, sum_xy = 0, sum_x2 = 0;
+  long i;
+  for (i = 0; i < p_arrbpt->size; ++i) {
+    t = p_arrbpt->arr_bpt[i].time;
+    p = p_arrbpt->arr_bpt[i].press;
+    sum_x += t;
+    sum_y += p;
+    sum_xy += t * p;
+    sum_x2 += t * t;
+  }
+  printf("N = %ld, sum_x = %.2f, sum_y = %.2f, sum_xy = %.2f, sum_x2 = %.2f\n", 
+         p_arrbpt->size, sum_x, sum_y, sum_xy, sum_x2);
+  return (p_arrbpt->size * sum_xy - sum_x * sum_y) / (p_arrbpt->size * sum_x2 - sum_x * sum_x);
 }
 
 /*
@@ -237,8 +252,7 @@ int main(int argc, char *argv[])
   printf("%ld data points were retrieved for analysis:\n", arr_bpt.size);
   print_BPT(&arr_bpt);
 
-  double k_slope = coeff_slope_press(&arr_bpt);
-  printf("Slope coefficient: %d\n", k_slope);
+  printf("Slope coefficient: %f\n", coeff_slope_press(&arr_bpt));
 
   free_BPT(&arr_bpt);
 
