@@ -47,10 +47,10 @@ void print_tm(const char *comment, const struct tm *tm_data, FILE *fptr)
           tm_data->tm_hour, tm_data->tm_min, tm_data->tm_sec);
 }
 
-// Data type for storing the barometric pressure and the corresponding time (in time_t format)
+// Data type for storing the barometric pressure and the corresponding time (normalized)
 typedef struct
 {
-  time_t time;
+  double time;
   double press;
 } BPT_point;
 
@@ -63,7 +63,7 @@ typedef struct
 } BPT_array;
 
 // Functions to work with BPT_array.
-int init_BPT(BPT_array *p_arrbpt, int init_capacity)
+int init_BPT(int init_capacity, BPT_array *p_arrbpt)
 {
   p_arrbpt->arr_bpt = (BPT_point*)malloc(init_capacity * sizeof(BPT_point));
   if (!p_arrbpt->arr_bpt) {
@@ -75,7 +75,7 @@ int init_BPT(BPT_array *p_arrbpt, int init_capacity)
   return TRUE;
 }
 
-int add_BPT_point(BPT_array *p_arrbpt, BPT_point point)
+int add_BPT_point(BPT_point point, BPT_array *p_arrbpt)
 {
   // Increase the array capacity if needed
   if (p_arrbpt->size == p_arrbpt->capacity) {
@@ -103,11 +103,16 @@ void free_BPT(BPT_array *p_arrbpt)
   p_arrbpt->size = p_arrbpt->capacity = 0;
 }
 
+int is_empty(const BPT_array *p_arrbpt)
+{
+  return p_arrbpt->size == 0 ? TRUE : FALSE;
+}
+
 void print_BPT(const BPT_array *p_arrbpt)
 {
   int i;
   for (i = 0; i < p_arrbpt->size; ++i)
-    printf("%ld: %ld %.2f\n", i, p_arrbpt->arr_bpt[i].time, p_arrbpt->arr_bpt[i].press);
+    printf("%ld: %.f %.2f\n", i, p_arrbpt->arr_bpt[i].time, p_arrbpt->arr_bpt[i].press);
 }
 
 // Fetch the data for analysis
@@ -115,11 +120,14 @@ int fetch_data(FILE *pf, const struct tm *tm_begin, const struct tm *tm_end, BPT
 {
   const int LINE_MAX = 150; // the max line length in the dat files 
   char buff_line[LINE_MAX]; // buffer for storage of the read line
+  double press_curr; // the barometric pressure value in the current line
+  short data_fetched = FALSE; // flag that data has fetched for analysis
+
   struct tm tm_curr; // the tm value read in the current line
   time_t time_curr; // the time_t value in the current line
-  double press_curr; // the barometric pressure value in the current line
-  short data_fetched = FALSE; // flad that data has fetched for analysis
+  time_t time_first; // the first time_t value in the retrieved range
 
+  // Get the time_t values of the range boundaries
   const time_t time_begin = mktime((struct tm *)tm_begin);
   const time_t time_end = mktime((struct tm *)tm_end);
 
@@ -146,13 +154,18 @@ int fetch_data(FILE *pf, const struct tm *tm_begin, const struct tm *tm_end, BPT
       if ( parse_pressure(buff_line, &press_curr) == FALSE )
         break;
 
-      // Save the current point press=f(time) for futher analysis
-      // print_tm("Datetime to save: ", &tm_curr, stdout);
-      // printf("Pressure to save: %f\n", press_curr);
-      // printf("---------------\n");
-      BPT_point ptn_curr = {time_curr, press_curr};
-      if ( add_BPT_point(p_arrbpt, ptn_curr) == FALSE ) {
-        print_tm("!--Error 11: Cannot add a new point pressure=f(time) for time: ",
+      // Save the current point of barometric pressure and time for further analysis.
+      // It's decided to save normalized time instead of the time read directly from the file.
+      // Normalized time is saved as `time_norm = time_curr - time_first`. 
+      // As they are smaller, it's easier to verify their calculations and it reduces 
+      // the likelihood of errors. Additionally, the `difftime()` function returns the difference 
+      // as a double, which is ideal for calculating the slope coefficient, since Barometric Pressure 
+      // values are also stored as doubles.
+      if ( is_empty(p_arrbpt) == TRUE )
+        time_first = time_curr; // save the first time value to calc normalized time
+      BPT_point ptn_curr = { difftime(time_curr, time_first), press_curr };
+      if ( add_BPT_point(ptn_curr, p_arrbpt) == FALSE ) {
+        print_tm("!--Error 11: Cannot add a new point pressure=f(time) for the time value:\n",
 	         &tm_curr, stderr);
         break;
       }
@@ -174,19 +187,9 @@ double coeff_slope_press(const BPT_array *bpt)
 }
 
 /*
- * Algorithm:
- * 1. Get user input of begin & end of the data & time.
- * 2. Open the file.
- * 3. 
- *
  * NOTE: X values: x_curr = time_in_sec_curr - time_in_sec_beg:
  * Use mktime to convert tm value to time_t, and then difftime() to calc a difference.
  * 
- * NOTE: The exact date and time values entered by the user may not exist in the file.
- *       So, inputted values may be either between the values in the file, 
- *       or be the same as in the file. 
- *       That means we cannot just compare the date&time in string format.
- *
  * An example of the program execution:
  * ./a.out Env_Data_Deep_Moor_2012_part.txt 2012_04_01 00:00:00 2012_05_01 23:59:59
  */
@@ -205,7 +208,7 @@ int main(int argc, char *argv[])
   
   // Create and init the BPT_array struct
   BPT_array arr_bpt;
-  if ( init_BPT(&arr_bpt, 10) == FALSE ) {
+  if ( init_BPT(10, &arr_bpt) == FALSE ) {
     fprintf(stderr, "!--Error 2: Cannot init the BPT array struct\n");
     return 2;
   }
@@ -233,6 +236,7 @@ int main(int argc, char *argv[])
   // Calc the Slope coefficient
   printf("%ld data points were retrieved for analysis:\n", arr_bpt.size);
   print_BPT(&arr_bpt);
+
   double k_slope = coeff_slope_press(&arr_bpt);
   printf("Slope coefficient: %d\n", k_slope);
 
